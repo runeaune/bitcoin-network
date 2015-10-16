@@ -95,6 +95,7 @@ func (p *peer) connect(connector connector, ch chan<- connection.Conn) {
 			Services:         0,
 			UserAgent:        "",
 			MinRemoteVersion: kMinPeerVersion,
+			Relay:            false,
 		})
 	}()
 }

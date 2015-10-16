@@ -5,8 +5,10 @@
 package network
 
 import (
+	"fmt"
 	"log"
 	"sort"
+	"sync"
 
 	"github.com/aarbt/bitcoin-network/connection"
 	"github.com/aarbt/bitcoin-network/messages"
@@ -49,8 +51,12 @@ type Network struct {
 	sendCh    chan Message
 	receiveCh chan connection.Message
 
-	done    chan struct{} // Closes when shut down is complete.
-	closing bool
+	done            chan struct{} // Closes when shut down is complete.
+	connEstablished chan struct{} // Closes once a messages is received.
+	closing         bool
+
+	// TODO More granular locking.
+	mu sync.Mutex
 }
 
 func New(config Config) *Network {
@@ -71,7 +77,8 @@ func New(config Config) *Network {
 		sendCh:    make(chan Message),
 		receiveCh: make(chan connection.Message),
 
-		done: make(chan struct{}),
+		done:            make(chan struct{}),
+		connEstablished: make(chan struct{}),
 	}
 	n.startMainThread()
 
@@ -152,51 +159,106 @@ func (n *Network) SendChannel() chan<- Message {
 	return n.sendCh
 }
 
+// Connected returns a channel that closes once an initial connection has been
+// established.
+func (n *Network) Connected() chan struct{} {
+	return n.connEstablished
+}
+
+// EndpointsByQuality returns a list of the currently connected endpoint sorted
+// by quality, starting with the best. The quality score is determined by
+// factors like responsiveness and honesty.
+func (n *Network) EndpointsByQuality() []string {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	var list []*peer
+	for _, peer := range n.peers {
+		if peer.isConnected() {
+			list = append(list, peer)
+		}
+	}
+	sort.Sort(PeersByQuality(list))
+	var endpoints []string
+	for _, peer := range list {
+		endpoints = append(endpoints, peer.name())
+	}
+	return endpoints
+}
+
+// EndpointMisbehaving allows upper levels to report that a endpoint is
+// misbehaving. This will lower the quality score of the associated peer,
+// potentially disconnecting or banning it. Score should be in the range
+// [1,100], where 1 is the least severe misbehaviour and 100 is the worst.
+func (n *Network) EndpointMisbehaving(name string, score int, desc string) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	// TODO Implement this. For now, categorize misbehaviour as failure and
+	// disconnect the endpoint.
+
+	peer, found := n.peers[name]
+	if found {
+		peer.setError(fmt.Errorf("Peer misbehaved (%d): %s", score, desc))
+	}
+	if peer.isConnected() {
+		peer.close()
+	}
+}
+
 func (n *Network) startMainThread() {
+	var connected bool
 	go func() {
 		// Run the main loop until send and receive channel has been closed.
 		for n.sendCh != nil || n.receiveCh != nil {
 			select {
 			case peer := <-n.newPeerCh:
+				n.mu.Lock()
 				n.readAndHandlePeerAddresses(peer)
 
 			case c := <-n.connectedCh:
-				if n.closing {
-					continue
+				n.mu.Lock()
+				if !n.closing {
+					p, found := n.peers[c.Endpoint()]
+					if !found {
+						log.Fatalf("Connection to invalid peer %q.",
+							c.Endpoint())
+					}
+					if err := p.connected(c); err != nil {
+						p.setError(err)
+						log.Println(err)
+						n.maybeConnectToMorePeers()
+					}
 				}
-				p, found := n.peers[c.Endpoint()]
-				if !found {
-					log.Fatalf("Connection to invalid peer %q.",
-						c.Endpoint())
-				}
-				if err := p.connected(c); err != nil {
-					p.setError(err)
-					log.Println(err)
-					n.maybeConnectToMorePeers()
-				}
-
 			case msg, ok := <-n.sendCh:
+				n.mu.Lock()
 				if !ok {
 					n.sendCh = nil
 					// Avoiding more connections getting
 					// opened and throw away those pending.
 					n.closing = true
 					n.close()
-					continue
+				} else {
+					log.Printf("Sending message %q to %q, size %d.",
+						msg.Type, msg.Endpoint, len(msg.Data))
+					n.handleSend(msg)
 				}
-				n.handleSend(msg)
 
 			case msg, ok := <-n.receiveCh:
+				n.mu.Lock()
 				if !ok {
 					n.receiveCh = nil
-					continue
-				}
-				if msg.Error() != nil {
+				} else if msg.Error() != nil {
 					n.handleError(msg.Endpoint, msg.Error())
-					continue
+				} else {
+					n.handleReceivedMessage(msg)
+					if !connected {
+						connected = true
+						close(n.connEstablished)
+					}
 				}
-				n.handleReceivedMessage(msg)
 			}
+			n.mu.Unlock()
 		}
 		close(n.done)
 	}()
