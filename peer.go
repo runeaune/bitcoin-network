@@ -38,6 +38,8 @@ type peer struct {
 	lastError error
 	receiveCh chan<- connection.Message
 	pending   bool
+	// TODO reduce penalty over time.
+	penalty int // misbehaviour score, disconnects at 20.
 }
 
 func newPeer(addr PeerAddress, ch chan<- connection.Message) *peer {
@@ -141,6 +143,9 @@ func (p peer) Quality() int {
 	if p.isConnected() {
 		score += 200
 	}
+
+	score -= p.penalty * 10
+
 	active := 800 - int(time.Since(p.MostRecentActivity()).Minutes())
 	if active > 0 {
 		score += active

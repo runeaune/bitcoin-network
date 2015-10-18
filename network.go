@@ -194,15 +194,17 @@ func (n *Network) EndpointMisbehaving(name string, score int, desc string) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
-	// TODO Implement this. For now, categorize misbehaviour as failure and
-	// disconnect the endpoint.
-
 	peer, found := n.peers[name]
 	if found {
-		peer.setError(fmt.Errorf("Peer misbehaved (%d): %s", score, desc))
-	}
-	if peer.isConnected() {
-		peer.close()
+		peer.penalty += score
+		if peer.penalty >= 20 {
+			peer.setError(fmt.Errorf("Peer misbehaved (%d): %s", score, desc))
+			if peer.isConnected() {
+				peer.close()
+			}
+		}
+	} else {
+		log.Printf("Tried to report misbehaviour for non-existant peer %q.", name)
 	}
 }
 
