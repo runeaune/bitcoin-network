@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"net"
 
-	"github.com/aarbt/bitcoin-network/messages"
+	"github.com/runeaune/bitcoin-network/messages"
 )
 
 func checksum(data []byte) []byte {

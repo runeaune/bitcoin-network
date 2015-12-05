@@ -10,7 +10,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/aarbt/bitcoin-network"
+	"github.com/runeaune/bitcoin-network"
 )
 
 var peerFile = flag.String("peerfile", "",

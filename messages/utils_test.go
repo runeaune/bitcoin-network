@@ -5,7 +5,7 @@ import (
 
 	"testing"
 
-	"github.com/aarbt/bitcoin-network/messages"
+	"github.com/runeaune/bitcoin-network/messages"
 )
 
 func TestWriteCompactUint(t *testing.T) {

@@ -6,7 +6,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/aarbt/bitcoin-network/messages"
+	"github.com/runeaune/bitcoin-network/messages"
 )
 
 var MainNetStartString = []byte{0xf9, 0xbe, 0xb4, 0xd9}

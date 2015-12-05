@@ -10,8 +10,8 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/aarbt/bitcoin-network/connection"
-	"github.com/aarbt/bitcoin-network/messages"
+	"github.com/runeaune/bitcoin-network/connection"
+	"github.com/runeaune/bitcoin-network/messages"
 )
 
 const kMainNetDefaultPort = 8333

@@ -10,7 +10,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/aarbt/bitcoin-network/connection"
+	"github.com/runeaune/bitcoin-network/connection"
 )
 
 const kPeerGoodQuality = 500
